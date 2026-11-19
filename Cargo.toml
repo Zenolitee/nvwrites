@@ -1,0 +1,10 @@
+[package]
+name = "nvwrites"
+version = "0.1.0"
+edition = "2021"
+description = "Shows how much NVDisplay.Container.exe has written to disk since it started"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
