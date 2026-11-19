@@ -3,7 +3,7 @@
 //! Windows only. No dependencies: raw kernel32 FFI.
 
 use std::ffi::c_void;
-use std::io::Read;
+use std::io::{self, Read, Write};
 use std::{env, thread, time::Duration};
 
 type Handle = *mut c_void;
@@ -142,7 +142,6 @@ fn verdict(mb_per_min: f64) -> &'static str {
 }
 
 fn main() {
-    let sample_secs: u64 = env::args().nth(1).and_then(|s| s.parse().ok()).unwrap_or(10).max(1);
     let uptime_secs = unsafe { GetTickCount64() } / 1000;
 
     println!("nvwrites - NVDisplay.Container.exe disk writes\n");
@@ -180,9 +179,21 @@ fn main() {
         println!("Average: {}/min", fmt_bytes(total as f64 / (uptime_secs as f64 / 60.0)));
     }
 
-    println!("\nMeasuring live rate for {sample_secs}s...");
-    thread::sleep(Duration::from_secs(sample_secs));
-    let delta: u64 = start
+    let sample_secs = match env::args().nth(1).and_then(|s| s.parse::<u64>().ok()) {
+        Some(s) => s.max(1),
+        None => ask_duration(),
+    };
+
+    // Re-read now so time spent at the menu doesn't count toward the rate.
+    let before: Vec<(u32, Option<u64>)> = pids.iter().map(|&p| (p, bytes_written(p))).collect();
+    println!("\nMeasuring live rate for {}...", fmt_duration_short(sample_secs));
+    for left in (1..=sample_secs).rev() {
+        print!("\r  {left}s left   ");
+        let _ = io::stdout().flush();
+        thread::sleep(Duration::from_secs(1));
+    }
+    println!("\r              ");
+    let delta: u64 = before
         .iter()
         .filter_map(|&(p, w0)| Some(bytes_written(p)?.saturating_sub(w0?)))
         .sum();
@@ -191,6 +202,33 @@ fn main() {
     println!("Live rate: {}/min (~{}/day if left on)", fmt_bytes(per_min), fmt_bytes(per_min * 1440.0));
     println!("\nVerdict: {}", verdict(mb_per_min));
     pause();
+}
+
+fn ask_duration() -> u64 {
+    println!("\nHow long should it measure? Longer gives a more reliable number.");
+    println!("  1) 10 seconds   2) 30 seconds   3) 1 minute   4) 5 minutes");
+    print!("Pick 1-4 (Enter = 10 seconds): ");
+    let _ = io::stdout().flush();
+    let mut line = String::new();
+    let _ = io::stdin().read_line(&mut line);
+    duration_choice(&line)
+}
+
+fn duration_choice(input: &str) -> u64 {
+    match input.trim() {
+        "2" => 30,
+        "3" => 60,
+        "4" => 300,
+        _ => 10,
+    }
+}
+
+fn fmt_duration_short(secs: u64) -> String {
+    if secs >= 60 && secs % 60 == 0 {
+        format!("{} min", secs / 60)
+    } else {
+        format!("{secs}s")
+    }
 }
 
 /// Keep the window open when double-clicked.
@@ -211,6 +249,18 @@ mod tests {
         assert!(verdict(0.4).starts_with("OK"));
         assert!(verdict(10.0).starts_with("ELEVATED"));
         assert!(verdict(305.0).starts_with("AFFECTED"));
+    }
+
+    #[test]
+    fn duration_menu() {
+        assert_eq!(duration_choice("1\r\n"), 10);
+        assert_eq!(duration_choice("2\r\n"), 30);
+        assert_eq!(duration_choice("3"), 60);
+        assert_eq!(duration_choice(" 4 \n"), 300);
+        assert_eq!(duration_choice("\r\n"), 10);
+        assert_eq!(duration_choice("junk"), 10);
+        assert_eq!(fmt_duration_short(300), "5 min");
+        assert_eq!(fmt_duration_short(30), "30s");
     }
 
     #[test]

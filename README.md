@@ -11,13 +11,14 @@ nvwrites tells you how much that process has written since it started, how fast 
 1. Download `nvwrites.exe` from the Releases page.
 2. Double-click it.
 3. Click **Yes** when Windows asks for admin.
-4. Wait 10 seconds and read the verdict.
+4. Pick how long to measure: 10 seconds, 30 seconds, 1 minute or 5 minutes. Longer gives a more reliable number.
+5. Read the verdict.
 
 It asks for admin because Windows won't let a normal program read the NVIDIA service's counters.
 
 The exe isn't signed, so Windows may show "Windows protected your PC". Click **More info**, then **Run anyway**.
 
-To measure for longer, pass the number of seconds from a terminal:
+To skip the menu or pick any other length, pass the number of seconds from a terminal:
 
 ```powershell
 .\nvwrites.exe 30
